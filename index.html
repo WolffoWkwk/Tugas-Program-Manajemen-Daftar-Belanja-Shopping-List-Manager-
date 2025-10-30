@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Shopping List Manager - Praktikum JS</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 900px;
+            margin: auto;
+            background: #f7f7f7;
+            color: #222;
+        }
+
+        h1 {
+            margin-bottom: 6px;
+        }
+
+        .card {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+            margin-bottom: 16px;
+        }
+
+        .flex {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        button {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        button.primary {
+            background: #2d89ff;
+            color: white;
+        }
+
+        button.danger {
+            background: #ff5c5c;
+            color: white;
+        }
+
+        button.ghost {
+            background: #eee;
+        }
+
+        ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        li {
+            padding: 8px 10px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .item-left {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .bought {
+            text-decoration: line-through;
+            color: #999;
+        }
+
+        .badge {
+            background: #eee;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 12px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .small {
+            font-size: 13px;
+            color: #555;
+        }
+
+        .info {
+            margin-top: 8px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Shopping List Manager</h1>
+    <p class="small">Aplikasi sederhana untuk menambah/hapus/menandai barang belanja (praktikum JS).</p>
+
+    <div class="card">
+        <div class="flex">
+            <input id="itemInput" type="text" placeholder="Masukkan nama item (contoh: Beras 5kg)" />
+            <button class="primary" id="addBtn">Tambah</button>
+            <button id="showAllBtn" class="ghost">Tampilkan Semua</button>
+            <button id="showUnboughtBtn" class="ghost">Hanya Belum Dibeli</button>
+        </div>
+        <div class="info">
+            <span class="badge" id="totalBadge">Total: 0</span>
+            <span style="margin-left:12px;" id="unboughtBadge">Belum dibeli: 0</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Daftar Belanja</h3>
+        <ul id="listContainer"></ul>
+        <div style="margin-top:12px;">
+            <button id="clearBought" class="ghost">Hapus Semua Yang Sudah Dibeli</button>
+            <button id="clearAll" class="danger">Hapus Semua Item</button>
+        </div>
+    </div>
+
+    <script>
+        // ====== Data utama ======
+        // Array untuk menyimpan item belanja; setiap item adalah object {id, name, qty, bought}
+        let shoppingList = [];
+
+        // Variabel kontrol tampilan
+        let showOnlyUnbought = false;
+
+        // ====== Helper functions (menggunakan string methods, loops, operators) ======
+        function generateId() {
+            // id sederhana: timestamp + random (operator +)
+            return Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36);
+        }
+
+        function normalizeInput(text) {
+            // Trim dan ubah ke bentuk yang konsisten (lowercase untuk logika)
+            return text.trim();
+        }
+
+        function parseNameAndQty(raw) {
+            // Menggunakan simple string processing:
+            // Jika user memasukkan "Beras 5kg" atau "Susu 2", coba pisahkan kata terakhir sebagai qty bila numeric.
+            let txt = raw.trim();
+            if (!txt) return { name: "", qty: 1 };
+
+            // Pecah spasi
+            let parts = txt.split(/\s+/);
+            let last = parts[parts.length - 1];
+
+            // Hapus tanda non-digit di akhir, coba ambil angka
+            let qty = 1;
+            // if last contains number like "5kg" or "2", extract leading number
+            let numMatch = last.match(/^(\d+)(?:[.,]?\d*)/);
+            if (numMatch) {
+                qty = parseInt(numMatch[1], 10) || 1;
+                parts.pop();
+            }
+
+            let name = parts.join(' ');
+            if (!name) name = last; // jika cuma satu kata
+            return { name: name, qty: qty };
+        }
+
+        // ====== Rendering ======
+        const listContainer = document.getElementById('listContainer');
+        const totalBadge = document.getElementById('totalBadge');
+        const unboughtBadge = document.getElementById('unboughtBadge');
+
+        function renderList() {
+            // Clear list
+            listContainer.innerHTML = "";
+
+            // Hitung total & belum dibeli
+            let total = shoppingList.length;
+            let unboughtCount = 0;
+
+            // Loop untuk menampilkan item
+            for (let i = 0; i < shoppingList.length; i++) {
+                const item = shoppingList[i];
+                if (!item) continue;
+
+                if (!item.bought) unboughtCount++;
+
+                // Jika mode hanya menampilkan belum dibeli, skip yg bought
+                if (showOnlyUnbought && item.bought) continue;
+
+                // Buat list item DOM
+                const li = document.createElement('li');
+
+                const left = document.createElement('div');
+                left.className = 'item-left';
+
+                // Checkbox to mark bought
+                const chk = document.createElement('input');
+                chk.type = 'checkbox';
+                chk.checked = !!item.bought;
+                chk.addEventListener('change', () => toggleBought(item.id));
+                left.appendChild(chk);
+
+                // Nama + qty
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = `${item.name} ${item.qty && item.qty !== 1 ? '(' + item.qty + ')' : ''}`;
+                if (item.bought) nameSpan.className = 'bought';
+                left.appendChild(nameSpan);
+
+                li.appendChild(left);
+
+                // Controls
+                const controls = document.createElement('div');
+                controls.className = 'controls';
+
+                const buyBtn = document.createElement('button');
+                buyBtn.className = 'ghost';
+                buyBtn.textContent = item.bought ? 'Batalkan' : 'Tandai Beli';
+                buyBtn.addEventListener('click', () => toggleBought(item.id));
+                controls.appendChild(buyBtn);
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'danger';
+                delBtn.textContent = 'Hapus';
+                delBtn.addEventListener('click', () => removeItem(item.id));
+                controls.appendChild(delBtn);
+
+                li.appendChild(controls);
+                listContainer.appendChild(li);
+            }
+
+            // Update badges
+            totalBadge.textContent = `Total: ${total}`;
+            unboughtBadge.textContent = `Belum dibeli: ${unboughtCount}`;
+        }
+
+        // ====== CRUD functions ======
+        function addItemFromInput() {
+            const input = document.getElementById('itemInput');
+            const raw = input.value;
+            const processed = normalizeInput(raw);
+
+            // Validasi
+            if (!processed) {
+                alert("Masukkan nama item terlebih dahulu!");
+                return;
+            }
+
+            // Parse name and qty
+            const parsed = parseNameAndQty(processed);
+            let name = parsed.name;
+            let qty = parsed.qty;
+
+            // Untuk konsistensi: huruf pertama kapital (opsional)
+            name = name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+            // Cek jika item serupa sudah ada (case-insensitive)
+            const existsIndex = shoppingList.findIndex(it => it.name.toLowerCase() === name.toLowerCase());
+            if (existsIndex >= 0) {
+                // Jika sudah ada, tambahkan qty menggunakan operator +
+                shoppingList[existsIndex].qty = (shoppingList[existsIndex].qty || 1) + qty;
+            } else {
+                shoppingList.push({
+                    id: generateId(),
+                    name: name,
+                    qty: qty,
+                    bought: false
+                });
+            }
+
+            // Kosongkan input dan render ulang
+            input.value = "";
+            renderList();
+        }
+
+        function removeItem(id) {
+            // Hapus item berdasarkan id menggunakan filter
+            shoppingList = shoppingList.filter(it => it.id !== id);
+            renderList();
+        }
+
+        function toggleBought(id) {
+            // Cari item lalu toggle properti bought
+            for (let i = 0; i < shoppingList.length; i++) {
+                if (shoppingList[i].id === id) {
+                    shoppingList[i].bought = !shoppingList[i].bought;
+                    break;
+                }
+            }
+            renderList();
+        }
+
+        function clearBoughtItems() {
+            // Menggunakan filter untuk menyisakan yg belum dibeli
+            shoppingList = shoppingList.filter(it => !it.bought);
+            renderList();
+        }
+
+        function clearAllItems() {
+            if (!confirm("Hapus semua item?")) return;
+            shoppingList = [];
+            renderList();
+        }
+
+        // ====== Event bindings ======
+        document.getElementById('addBtn').addEventListener('click', addItemFromInput);
+        document.getElementById('itemInput').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') addItemFromInput();
+        });
+
+        document.getElementById('showUnboughtBtn').addEventListener('click', function () {
+            showOnlyUnbought = true; renderList();
+        });
+        document.getElementById('showAllBtn').addEventListener('click', function () {
+            showOnlyUnbought = false; renderList();
+        });
+
+        document.getElementById('clearBought').addEventListener('click', clearBoughtItems);
+        document.getElementById('clearAll').addEventListener('click', clearAllItems);
+
+        // ====== Inisialisasi contoh data ======
+        shoppingList = [
+            { id: generateId(), name: "Beras 5kg", qty: 1, bought: false },
+            { id: generateId(), name: "Telur (1 lusin)", qty: 1, bought: false },
+            { id: generateId(), name: "Susu UHT", qty: 2, bought: true }
+        ];
+
+        renderList();
+    </script>
+</body>
+
+</html>
